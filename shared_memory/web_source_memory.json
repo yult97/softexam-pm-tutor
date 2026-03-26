@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "generated_at": "2026-03-26T10:37:05.546173+00:00",
+    "source_events": 0,
+    "promotion_threshold": 3
+  },
+  "observed_preferred_domains": [],
+  "observed_blocked_domains": [],
+  "preferred_domains": [],
+  "blocked_domains": [],
+  "preferred_by_query_type": {}
+}

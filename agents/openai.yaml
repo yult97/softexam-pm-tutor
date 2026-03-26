@@ -1,0 +1,7 @@
+interface:
+  display_name: "信息系统项目管理师教程"
+  short_description: "基于整本高项教材内容的检索、定位、总结和问答辅助服务"
+  default_prompt: "使用 $softexam-pm-tutor 基于教材内容回答我的问题，并标注出处。"
+
+policy:
+  allow_implicit_invocation: true

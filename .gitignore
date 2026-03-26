@@ -1,0 +1,34 @@
+# Python 编译缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# 第三方依赖（vendor 目录内的依赖包）
+scripts/_vendor/
+
+# PDF 教材原始文件（当前为 530MB，超过 GitHub 普通仓库单文件限制）
+assets/*.pdf
+
+# 本地学习日志和临时导出包
+learnings/feedback_events.jsonl
+learnings/promotion_candidates.md
+shared_memory/feedback_pool.jsonl
+exports/
+
+# IDE / 编辑器配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 虚拟环境
+.venv/
+venv/
+env/

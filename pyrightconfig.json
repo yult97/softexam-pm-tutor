@@ -1,0 +1,14 @@
+{
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "off",
+  "include": [
+    "scripts"
+  ],
+  "extraPaths": [
+    "./scripts",
+    "./scripts/_vendor"
+  ],
+  "exclude": [
+    "scripts/_vendor"
+  ]
+}
