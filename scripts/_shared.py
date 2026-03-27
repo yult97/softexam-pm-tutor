@@ -54,6 +54,11 @@ QUESTION_FILLERS: tuple[str, ...] = (
 SUMMARY_HINTS: tuple[str, ...] = ("总结", "概括", "归纳", "考点", "提纲")
 DEFINITION_HINTS: tuple[str, ...] = ("什么是", "是什么", "定义", "含义", "解释", "理解")
 COMPARISON_HINTS: tuple[str, ...] = ("区别", "比较", "关系", "不同", "异同")
+LIST_HINTS: tuple[str, ...] = (
+    "注意事项", "需要注意", "应注意", "注意什么",
+    "原因", "有哪些", "哪几点", "哪几项", "包括哪些", "包括什么",
+    "表现", "体现", "展现", "具体表现",
+)
 
 
 # ── 文本归一化 ────────────────────────────────────────────────────────────────
@@ -213,6 +218,8 @@ def classify_query(query: str) -> str:
         return "comparison"
     if any(marker in query for marker in DEFINITION_HINTS):
         return "definition"
+    if any(marker in query for marker in LIST_HINTS):
+        return "list"
     return "general"
 
 

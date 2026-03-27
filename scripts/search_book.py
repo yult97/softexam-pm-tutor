@@ -84,6 +84,14 @@ def load_results(index_path: Path, query: str, top_k: int) -> list[SearchResult]
                 if preferences.get("prefer_process_markers") and any(marker in text for marker in ("过程包括", "核心过程", "主要内容")):
                     score += 14.0
 
+            if query_mode == "list":
+                if any(marker in text for marker in ("主要包括", "主要有", "注意以下", "注意事项", "原因主要包括", "应该注意")):
+                    score += 26.0
+                if "●" in text or re.search(r"\(\d+\)", text):
+                    score += 12.0
+                if any(marker in text for marker in ("输入", "工具与技术", "输出")) and "主要包括" not in text:
+                    score -= 12.0
+
             if query_mode == "definition":
                 if any(marker in text for marker in ("是指", "是为了", "记录了", "授权")):
                     score += 16.0

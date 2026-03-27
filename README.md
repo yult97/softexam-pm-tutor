@@ -43,22 +43,54 @@
 
 ```bash
 mkdir -p ~/.codex/skills
-git clone <your-repo-url> ~/.codex/skills/softexam-pm-tutor
+git clone https://github.com/yult97/softexam-pm-tutor.git ~/.codex/skills/softexam-pm-tutor
 ```
 
 如果你使用其他支持本地 Skill/Agent 目录的环境，也可以直接复制整个文件夹使用。
 
 你也可以直接在支持 Skill 安装的代理环境里这样说：
 
-- `Codex`：`帮我安装这个 skill，github 地址：<your-repo-url>`
-- `Claude Code`：`帮我安装这个 skill，github 地址：<your-repo-url>`
-- `OpenClaw`：`帮我安装这个 skill，github 地址：<your-repo-url>`
+- `Codex`：`帮我安装这个 skill，github 地址：https://github.com/yult97/softexam-pm-tutor.git`
+- `Claude Code`：`帮我安装这个 skill，github 地址：https://github.com/yult97/softexam-pm-tutor.git`
+- `OpenClaw`：`帮我安装这个 skill，github 地址：https://github.com/yult97/softexam-pm-tutor.git`
 
 如果你的环境支持从 GitHub 仓库直接安装 Skill，这种说法通常就够了。
 
 如果对方环境还没有 Python 3，也可以继续补一句：
 
 - `请先运行仓库里的 Python 安装脚本，再安装这个 skill。`
+
+## 更新
+
+如果已经安装过这个 skill，更推荐直接执行“一条命令更新”，而不是手动删目录再重装。
+
+macOS / Linux:
+
+```bash
+bash scripts/update_skill.sh
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\update_skill.ps1
+```
+
+这个更新脚本会自动兼容两种情况：
+
+- 如果当前安装目录本身是 `git clone` 下来的，就执行安全的 `git pull --ff-only`
+- 如果当前安装目录只是复制出来的普通文件夹，就从 GitHub 拉一份最新代码覆盖更新
+
+同时会尽量保留本地数据：
+
+- `assets/*.pdf`
+- `references/book_chunks.jsonl`
+- `learnings/*.jsonl`
+- `learnings/*.md`
+- `shared_memory/*.json`
+- `shared_memory/*.jsonl`
+
+更新完成后，重启 Codex / Claude Code / OpenClaw 即可生效。
 
 ## 快速开始
 

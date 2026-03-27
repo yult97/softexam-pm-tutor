@@ -4,6 +4,7 @@
 import argparse
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple, Optional
 
@@ -164,6 +165,25 @@ def aggregate_results(
 def should_skip_chunk(text: str) -> bool:
     """过滤明显不是教材正文证据的文本块。"""
     return looks_like_toc(text) or looks_like_reference(text) or looks_like_exercise(text)
+
+
+@lru_cache(maxsize=1)
+def load_index_chunks(index_path: Path = DEFAULT_INDEX) -> tuple[SearchResult, ...]:
+    """加载索引中的全部 chunk，供枚举题补齐相邻正文使用。"""
+    records: list[SearchResult] = []
+    with index_path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            record = json.loads(line)
+            records.append(
+                SearchResult(
+                    id=str(record["id"]),
+                    page=int(record["page"]),
+                    chunk_index=int(record["chunk_index"]),
+                    score=0.0,
+                    text=str(record.get("text", "")),
+                )
+            )
+    return tuple(records)
 
 
 # ── 句子拆分与清洗 ────────────────────────────────────────────────────────────
@@ -737,6 +757,225 @@ def extract_relation_snippet(text: str) -> str:
     return ""
 
 
+def list_intro(query: str, count: int) -> str:
+    """为枚举题生成更稳定的开头句。"""
+    if "原因" in query:
+        return f"根据教材，主要包括以下 {count} 项："
+    if "注意" in query:
+        return f"根据教材，主要可归纳为以下 {count} 点："
+    return f"根据教材，主要可概括为以下 {count} 点："
+
+
+def ordered_list_results(query: str, results: list[SearchResult]) -> list[SearchResult]:
+    """为枚举题筛选更可能包含完整列表的命中块，并按教材顺序排序。"""
+    if not results:
+        return []
+    anchor_page = results[0].page
+    windowed = [
+        item
+        for item in results[:16]
+        if not should_skip_chunk(item.text) and abs(item.page - anchor_page) <= 3
+    ]
+    boosted: list[tuple[float, SearchResult]] = []
+    for item in windowed:
+        score = item.score
+        if item.page == anchor_page:
+            score += 20
+        if "注意" in query and "注意" in item.text:
+            score += 80
+        if "原因" in query and "原因" in item.text:
+            score += 80
+        if any(marker in item.text for marker in ("主要包括", "主要有", "注意事项", "注意以下", "原因主要包括", "应该注意")):
+            score += 24
+        if "●" in item.text or re.search(r"\(\d+\)", item.text):
+            score += 12
+        boosted.append((score, item))
+
+    prioritized = [item for _, item in sorted(boosted, key=lambda pair: (-pair[0], pair[1].page, pair[1].chunk_index))]
+    chosen = prioritized[:4]
+
+    expanded_ids = {item.id for item in chosen}
+    for seed in list(chosen):
+        for item in windowed:
+            if item.page == seed.page and abs(item.chunk_index - seed.chunk_index) <= 1:
+                expanded_ids.add(item.id)
+
+    expanded = [item for item in windowed if item.id in expanded_ids]
+    return sorted(expanded, key=lambda item: (item.page, item.chunk_index))
+
+
+def merge_page_chunks(results: list[SearchResult]) -> list[tuple[int, str]]:
+    """按页合并相邻 chunk，避免同页续块中的枚举项被截断。"""
+    merged: dict[int, list[str]] = {}
+    for item in results:
+        merged.setdefault(item.page, []).append(item.text)
+    ordered_pages = sorted(merged)
+    return [
+        (page, stitch_chunk_texts(chunks))
+        for page, chunks in ((page, merged[page]) for page in ordered_pages)
+    ]
+
+
+def stitch_chunk_texts(chunks: list[str]) -> str:
+    """拼接同页 chunk，并尽量消除切块带来的重叠重复。"""
+    if not chunks:
+        return ""
+    stitched = re.sub(r"\s+", " ", chunks[0]).strip()
+    for raw in chunks[1:]:
+        current = re.sub(r"\s+", " ", raw).strip()
+        max_overlap = min(len(stitched), len(current), 160)
+        overlap = 0
+        for size in range(max_overlap, 24, -1):
+            if stitched[-size:] == current[:size]:
+                overlap = size
+                break
+        stitched = (stitched + " " + current[overlap:].lstrip()).strip()
+    return stitched
+
+
+def clean_list_item(text: str) -> str:
+    """清理枚举项文本。"""
+    cleaned = re.sub(r"^\(\d+\)\s*", "", text)
+    cleaned = re.sub(r"^[●•]\s*", "", cleaned)
+    cleaned = re.sub(r"\b\d{2,4}\s*信息系统项目管理师教程\(第4版\)", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ;；，,。")
+    cleaned = re.sub(r"\s+(?:第\d+章|11\.1\.2|9\.6\.3)\b.*$", "", cleaned)
+    return cleaned.strip()
+
+
+def extract_numbered_items(text: str) -> list[str]:
+    """提取 (1) / (2) 这类顶层枚举项。"""
+    matches = list(re.finditer(r"\((\d+)\)", text))
+    if len(matches) < 2:
+        return []
+    items: list[str] = []
+    for index, match in enumerate(matches):
+        start = match.start()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        raw = text[start:end]
+        item = clean_list_item(raw)
+        if len(item) >= 6:
+            items.append(item)
+    return items
+
+
+def extract_bullet_items(text: str) -> list[str]:
+    """提取 ● 这类顶层枚举项。"""
+    matches = list(re.finditer(r"[●•]\s*", text))
+    if len(matches) < 2:
+        return []
+    items: list[str] = []
+    for index, match in enumerate(matches):
+        start = match.start()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        raw = text[start:end]
+        item = clean_list_item(raw)
+        if len(item) >= 8:
+            items.append(item)
+    return items
+
+
+def list_page_score(query: str, result: SearchResult, anchor_page: int) -> float:
+    """为枚举题选择最可能包含目标列表的页。"""
+    score = result.score
+    if result.page == anchor_page:
+        score += 20
+    if "注意" in query and "注意" in result.text:
+        score += 90
+    if "原因" in query and "原因" in result.text:
+        score += 90
+    if any(marker in result.text for marker in ("主要包括", "主要有", "注意事项", "注意以下", "原因主要包括", "应该注意")):
+        score += 24
+    if "●" in result.text or re.search(r"\(\d+\)", result.text):
+        score += 12
+    return score
+
+
+def citation_for_pages(pages: list[int]) -> str:
+    """把页码列表格式化成引用文本。"""
+    unique = sorted(set(pages))
+    if not unique:
+        return "教材"
+    if len(unique) == 1:
+        return format_citation(unique[0])
+    return f"教材第 {unique[0]}-{unique[-1]} 页"
+
+
+def section_text_for_list_query(query: str, text: str) -> str:
+    """锁定枚举题真正对应的正文段落，减少串到其他列表。"""
+    compact = re.sub(r"\s+", " ", text).strip()
+    markers: list[str] = []
+    if "注意" in query:
+        markers.extend(["注意事项", "应该注意以下", "需要注意以下", "注意以下"])
+    if "原因" in query:
+        markers.extend(["发生成本失控的原因主要包括", "项目成本失控的原因", "原因主要包括"])
+    markers.extend(["主要包括", "主要有"])
+
+    for marker in markers:
+        index = compact.find(marker)
+        if index != -1:
+            compact = compact[index:]
+            break
+
+    stop_match = re.search(r"\s+\d+\.\d+\.\d+\s+[^\s]{1,20}", compact)
+    if stop_match:
+        compact = compact[:stop_match.start()]
+    return compact.strip()
+
+
+def enumerate_answer_items(query: str, results: list[SearchResult]) -> list[tuple[str, str]]:
+    """按教材顺序抽取枚举题的列表项。"""
+    if not results:
+        return []
+
+    anchor_page = results[0].page
+    windowed = [
+        item
+        for item in results[:24]
+        if not should_skip_chunk(item.text) and abs(item.page - anchor_page) <= 4
+    ]
+    if not windowed:
+        return []
+
+    best = max(windowed, key=lambda item: list_page_score(query, item, anchor_page))
+    selected_pages = {best.page}
+    if any(item.page == best.page + 1 for item in windowed):
+        selected_pages.add(best.page + 1)
+
+    selected = sorted(
+        [
+            item
+            for item in load_index_chunks()
+            if not should_skip_chunk(item.text) and item.page in selected_pages
+        ],
+        key=lambda item: (item.page, item.chunk_index),
+    )
+    section_text = section_text_for_list_query(
+        query,
+        stitch_chunk_texts([item.text for item in selected]),
+    )
+
+    items = extract_numbered_items(section_text)
+    if len(items) < 2:
+        items = extract_bullet_items(section_text)
+    if not items:
+        return []
+
+    citation = citation_for_pages([item.page for item in selected])
+    max_items = 8 if ("注意" in query or "原因" in query or "哪几" in query or "哪些" in query) else 6
+    deduped: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for item in items:
+        normalized = re.sub(r"\s+", "", item)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append((citation, item))
+        if len(deduped) >= max_items:
+            break
+    return deduped
+
+
 def compose_answer(query: str, evidence: list[EvidenceSentence], results: list[SearchResult]) -> str:
     """基于证据句子组装可读答案草稿。"""
     if not evidence:
@@ -777,6 +1016,13 @@ def compose_answer(query: str, evidence: list[EvidenceSentence], results: list[S
         if relation is not None:
             lines.append(f"- 两者关系：{relation.text}（{format_citation(relation.page)}）")
         return "\n".join(lines)
+    elif mode == "list":
+        enumerated = enumerate_answer_items(query, results)
+        if enumerated:
+            lines = [list_intro(query, len(enumerated))]
+            for idx, (citation, item) in enumerate(enumerated, start=1):
+                lines.append(f"{idx}. {item}（{citation}）")
+            return "\n".join(lines)
     else:
         intro = f"根据教材检索结果，{intro_text}（{cite}）。"
 
