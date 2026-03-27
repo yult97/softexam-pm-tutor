@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _shared import DEFAULT_FEEDBACK_LOG, DEFAULT_SHARED_FEEDBACK_POOL, classify_query
+from eval_suites import append_bug_regression
 
 
 COMMON_ISSUE_TYPES = (
@@ -75,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         "--no-refresh-shared-memory",
         action="store_true",
         help="同步共享池后不自动重建共享记忆。",
+    )
+    parser.add_argument(
+        "--no-sync-evals",
+        action="store_true",
+        help="记录反馈后不自动追加 bug 回归和生成近义问法 eval。",
     )
     return parser.parse_args()
 
@@ -203,6 +209,17 @@ def main() -> int:
     if not args.no_sync_shared and not args.no_refresh_shared_memory:
         refresh_result = refresh_shared_memory(args.shared_pool)
 
+    eval_sync_result = None
+    if not args.no_sync_evals:
+        eval_sync_result = append_bug_regression(
+            query=args.query,
+            issue_type=args.issue_type,
+            expected=args.expected,
+            feedback=args.feedback,
+            pages=args.page,
+            source_event_id=shared_event["event_id"],
+        )
+
     print(
         json.dumps(
             {
@@ -217,6 +234,7 @@ def main() -> int:
                 "shared_synced": shared_synced,
                 "shared_event_id": shared_event["event_id"],
                 "shared_memory_refresh": refresh_result,
+                "eval_sync": eval_sync_result,
             },
             ensure_ascii=False,
             indent=2,

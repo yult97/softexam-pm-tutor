@@ -875,18 +875,37 @@ def extract_bullet_items(text: str) -> list[str]:
     return items
 
 
+def extract_list_items(text: str) -> list[str]:
+    """统一提取顶层枚举项，优先 (1) 风格，其次项目符号。"""
+    items = extract_numbered_items(text)
+    if len(items) < 2:
+        items = extract_bullet_items(text)
+    return items
+
+
 def list_page_score(query: str, result: SearchResult, anchor_page: int) -> float:
     """为枚举题选择最可能包含目标列表的页。"""
     score = result.score
+    has_list_markers = any(
+        marker in result.text
+        for marker in ("主要包括", "主要有", "注意事项", "注意以下", "应该注意以下", "原因主要包括")
+    )
+    has_list_structure = has_list_markers or "●" in result.text or bool(re.search(r"\(\d+\)", result.text))
     if result.page == anchor_page:
         score += 20
     if "注意" in query and "注意" in result.text:
         score += 90
+    elif "注意" in query and not has_list_markers:
+        score -= 160
     if "原因" in query and "原因" in result.text:
         score += 90
-    if any(marker in result.text for marker in ("主要包括", "主要有", "注意事项", "注意以下", "原因主要包括", "应该注意")):
+    elif "原因" in query and not has_list_markers:
+        score -= 160
+    if any(marker in query for marker in ("哪些", "哪几", "哪几点", "哪几项", "包括")) and not has_list_structure:
+        score -= 120
+    if has_list_markers:
         score += 24
-    if "●" in result.text or re.search(r"\(\d+\)", result.text):
+    if has_list_structure:
         score += 12
     return score
 
@@ -923,6 +942,44 @@ def section_text_for_list_query(query: str, text: str) -> str:
     return compact.strip()
 
 
+def select_list_pages(query: str, best: SearchResult) -> list[int]:
+    """为枚举题选择需要合并的教材页，必要时自动补上续页。"""
+    index_chunks = load_index_chunks()
+    page_map: dict[int, list[SearchResult]] = {}
+    for item in index_chunks:
+        if should_skip_chunk(item.text):
+            continue
+        page_map.setdefault(item.page, []).append(item)
+
+    if best.page not in page_map:
+        return [best.page]
+
+    selected_pages = [best.page]
+    base_text = section_text_for_list_query(
+        query,
+        stitch_chunk_texts([item.text for item in sorted(page_map[best.page], key=lambda chunk: chunk.chunk_index)]),
+    )
+    base_items = extract_list_items(base_text)
+
+    next_page = best.page + 1
+    if next_page in page_map:
+        combined_text = section_text_for_list_query(
+            query,
+            stitch_chunk_texts(
+                [
+                    item.text
+                    for page in (best.page, next_page)
+                    for item in sorted(page_map[page], key=lambda chunk: chunk.chunk_index)
+                ]
+            ),
+        )
+        combined_items = extract_list_items(combined_text)
+        if len(combined_items) > len(base_items):
+            selected_pages.append(next_page)
+
+    return selected_pages
+
+
 def enumerate_answer_items(query: str, results: list[SearchResult]) -> list[tuple[str, str]]:
     """按教材顺序抽取枚举题的列表项。"""
     if not results:
@@ -938,9 +995,7 @@ def enumerate_answer_items(query: str, results: list[SearchResult]) -> list[tupl
         return []
 
     best = max(windowed, key=lambda item: list_page_score(query, item, anchor_page))
-    selected_pages = {best.page}
-    if any(item.page == best.page + 1 for item in windowed):
-        selected_pages.add(best.page + 1)
+    selected_pages = set(select_list_pages(query, best))
 
     selected = sorted(
         [
@@ -986,6 +1041,7 @@ def compose_answer(query: str, evidence: list[EvidenceSentence], results: list[S
     first_page = first.page
     cite = format_citation(first_page)
     intro_text = normalize_answer_sentence(first.text)
+    intro = f"根据教材检索结果，{intro_text}（{cite}）。"
 
     if mode == "summary":
         process_names = summarize_processes(results)
@@ -1023,8 +1079,6 @@ def compose_answer(query: str, evidence: list[EvidenceSentence], results: list[S
             for idx, (citation, item) in enumerate(enumerated, start=1):
                 lines.append(f"{idx}. {item}（{citation}）")
             return "\n".join(lines)
-    else:
-        intro = f"根据教材检索结果，{intro_text}（{cite}）。"
 
     bullets: list[str] = []
     intro_norm = re.sub(r"\s+", "", intro_text)

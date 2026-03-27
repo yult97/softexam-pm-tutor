@@ -196,9 +196,18 @@ python3 scripts/record_feedback.py "项目章程是什么" \
 
 回归样例位于：
 
-- [evals.json](/Users/yubobo/.codex/skills/softexam-pm-tutor/evals/evals.json)
+- [core_evals.json](/Users/yubobo/.codex/skills/softexam-pm-tutor/evals/core_evals.json)：稳定核心集
+- [bug_regressions.json](/Users/yubobo/.codex/skills/softexam-pm-tutor/evals/bug_regressions.json)：每次真实 bug 的回归题
+- [generated_variants.json](/Users/yubobo/.codex/skills/softexam-pm-tutor/evals/generated_variants.json)：根据 bug 回归自动生成的近义问法
+- [evals.json](/Users/yubobo/.codex/skills/softexam-pm-tutor/evals/evals.json)：聚合产物，兼容旧链路
 
-你可以把它作为后续迭代时的最小验收集。
+首次或后续重建可运行：
+
+```bash
+python3 scripts/rebuild_evals.py
+```
+
+日常记录真实 bug 时，`scripts/record_feedback.py` 会默认自动把问题追加到 `bug_regressions.json`，再刷新 `generated_variants.json` 和聚合后的 `evals.json`。
 
 ## 适合谁用
 

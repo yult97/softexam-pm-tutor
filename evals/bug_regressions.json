@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "kind": "bug_regressions",
+    "description": "每次真实 bug 修复后沉淀的回归题，不追求覆盖面，追求不再复发。",
+    "generated_at": "2026-03-27T07:08:43.013648+00:00"
+  },
+  "tests": [
+    {
+      "prompt": "使用 WBS 拆分需要注意的点或者说原则？",
+      "expected_behavior": [
+        "应识别为教材枚举题，而不是退回 WBS 定义",
+        "应完整列出教材中的 8 点注意事项，不应漏项",
+        "应优先命中教材第 298-299 页"
+      ],
+      "files": [],
+      "issue_type": "summary_undercoverage",
+      "query_type": "list",
+      "source": "bug_regression"
+    },
+    {
+      "prompt": "成本失控的原因？",
+      "expected_behavior": [
+        "应完整列出教材中的 5 项原因",
+        "应包含“需求管理不当”，不应只答前 4 项",
+        "应引用教材第 346 页",
+        "应完整列出教材中的5项原因",
+        "应包含需求管理不当",
+        "应引用教材第346页",
+        "如教材为枚举题，应完整列出教材条目，不应漏项或串到别的列表",
+        "应覆盖教材中的核心过程、要点或范围"
+      ],
+      "files": [],
+      "issue_type": "summary_undercoverage",
+      "query_type": "list",
+      "source": "bug_regression",
+      "source_event_id": "cf6017393e4ab100"
+    },
+    {
+      "prompt": "成本失控的原因，每一项具体在哪些方面展现出来的？",
+      "expected_behavior": [
+        "应先列出教材中的 5 项原因",
+        "每一项都应展开到教材对应的具体表现",
+        "应引用教材第 346 页"
+      ],
+      "files": [],
+      "issue_type": "summary_undercoverage",
+      "query_type": "list",
+      "source": "bug_regression"
+    }
+  ]
+}

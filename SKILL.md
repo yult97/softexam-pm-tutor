@@ -143,6 +143,19 @@ python3 scripts/record_feedback.py "项目章程是什么" \
 ### 5. 自动刷新共享记忆，定期再做摘要汇总
 
 每次 `record_feedback.py` 默认都会自动刷新共享记忆，所以日常纠正不需要额外动作。
+同时，它也会默认把这次真实问题追加到 `evals/bug_regressions.json`，并自动刷新 `evals/generated_variants.json` 与聚合后的 `evals/evals.json`。
+
+评测集建议分三层维护：
+
+- `evals/core_evals.json`：稳定核心集，守住主链路
+- `evals/bug_regressions.json`：每次真实 bug 的回归题
+- `evals/generated_variants.json`：根据 bug 回归自动生成的近义问法
+
+兼容旧链路的聚合文件仍保留为 `evals/evals.json`。如需手动重建，可运行：
+
+```bash
+python3 scripts/rebuild_evals.py
+```
 
 如果你想做运营视角的摘要复盘，再定期运行：
 
